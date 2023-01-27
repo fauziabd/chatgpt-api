@@ -1,25 +1,60 @@
-import chatGPT from "chatgpt-io";
-import express from "express";
+import express from 'express';
+import chatGPT from 'chatgpt-io';
+import * as dotenv from 'dotenv';
 import bodyParser from "body-parser";
+
+dotenv.config();
 
 const app = express();
 app.use(bodyParser.json());
 
-app.post('/ask', (req, res) => {
-  const data = req.body;
-  //const data = JSON.parse(raw)
-  if (data.hasOwnProperty("message") && data.hasOwnProperty("token")) {
-    (async function() {
-      let bot = new chatGPT(data.token);
-      await bot.waitForReady();
+// Initialize chatbot with a session token
+const bot = new chatGPT(process.env.CHATGPT_SESSION_TOKEN);
 
-      let result = await bot.ask(data.message);
-      res.json({ response: result });
-    })();
-  } else {
-    res.json({ message: 'Please enter your token and the message!' });
-  }
+// Wait for chatbot to be ready
+bot.waitForReady().then(() => {
+  console.log("Chatbot is ready!");
 });
-app.listen(3000, () => {
-  console.log(`Listening on port 3000`)
-})
+
+// API route for asking the chatbot a question
+app.post("/ask", async (req, res) => {
+  // Get question and conversation_id from body parameters
+  const { api_key, message, conversation_id } = req.body;
+
+  // Return an error if the chatbot is not yet ready
+  if (api_key !== process.env.API_KEY) {
+    res.status(503).send({
+      error: "API Key is invalid!"
+    });
+    return;
+  }
+
+  if (!bot.ready) {
+    res.status(503).send({
+      error: "Chatbot is not ready yet"
+    });
+    return;
+  }
+
+  // Use conversation_id if provided, otherwise use default conversation
+  let response;
+  if (conversation_id) {
+    response = await bot.ask(message, conversation_id);
+  } else {
+    response = await bot.ask(message);
+  }
+
+  // Send response as JSON
+  res.send({
+    response,
+  });
+});
+
+const port = process.env.CHATGPT_PORT || 3000;
+app.listen({ port }, (err) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`API listening on port ${port}`);
+});
